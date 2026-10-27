@@ -23,6 +23,7 @@ class _BlePageState extends State<BlePage> {
   StreamSubscription? _scanSub, _notifySub, _connSub;
   bool _scanning = false;
   bool _ledon = false;
+  double _pwmValue = 0; // Skala PWM 0-100
   String _suhu = '-', _hum = '-';
   String _status = 'Belum terhubung';
   String _latBle = '-';
@@ -109,9 +110,18 @@ class _BlePageState extends State<BlePage> {
     });
   }
 
+  // Pengiriman nilai PWM (0-100) via BLE
+  Future<void> _setPwm(double val) async {
+    final intValue = val.toInt();
+    await _ledChar?.write([intValue]);
+    setState(() {
+      _pwmValue = val;
+      _ledon = intValue > 0;
+    });
+  }
+
   Future<void> _setLed(bool on) async {
-    await _ledChar?.write([on ? 1 : 0]);
-    setState(() => _ledon = on);
+    await _setPwm(on ? 100 : 0);
   }
 
   Future<void> _measureLatency() async {
@@ -119,7 +129,7 @@ class _BlePageState extends State<BlePage> {
     final samples = <int>[];
     for (var i = 0; i < 10; i++) {
       final sw = Stopwatch()..start();
-      await _ledChar!.write([i.isEven ? 1 : 0]);
+      await _ledChar!.write([i.isEven ? 100 : 0]);
       sw.stop();
       samples.add(sw.elapsedMilliseconds);
       await Future.delayed(const Duration(milliseconds: 500));
@@ -176,9 +186,19 @@ class _BlePageState extends State<BlePage> {
             ),
           ] else ...[
             SwitchListTile(
-              title: const Text('LED'),
+              title: const Text('LED On/Off'),
               value: _ledon,
               onChanged: _setLed,
+            ),
+            const SizedBox(height: 8),
+            Text('Kecerahan LED PWM: ${_pwmValue.toInt()}%'),
+            Slider(
+              value: _pwmValue,
+              min: 0,
+              max: 100,
+              divisions: 100,
+              label: '${_pwmValue.round()}%',
+              onChanged: _setPwm,
             ),
             Card(
               child: ListTile(

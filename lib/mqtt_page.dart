@@ -27,6 +27,7 @@ class _MqttPageState extends State<MqttPage> {
   bool _connected = false;
   bool _connecting = false;
   bool _ledOn = false;
+  double _pwmValue = 0; // Skala PWM 0-100
   String _suhu = '-', _hum = '-', _device = 'tidak diketahui';
   String _status = 'Belum terhubung';
 
@@ -135,7 +136,19 @@ class _MqttPageState extends State<MqttPage> {
             _hum = j['hum'].toString();
           } catch (_) {}
         } else if (topic == tLedState) {
-          _ledOn = text == 'ON';
+          if (text == 'ON') {
+            _ledOn = true;
+            _pwmValue = 100;
+          } else if (text == 'OFF') {
+            _ledOn = false;
+            _pwmValue = 0;
+          } else {
+            final parsed = double.tryParse(text);
+            if (parsed != null) {
+              _pwmValue = parsed;
+              _ledOn = _pwmValue > 0;
+            }
+          }
         } else if (topic == tStatus) {
           _device = text;
         }
@@ -169,6 +182,14 @@ class _MqttPageState extends State<MqttPage> {
     _client?.publishMessage(topic, MqttQos.atLeastOnce, b.payload!);
   }
 
+  void _setPwm(double val) {
+    setState(() {
+      _pwmValue = val;
+      _ledOn = val > 0;
+    });
+    _publish(tLed, val.toInt().toString());
+  }
+
   Future<void> _measureLatency() async {
     if (!_connected || _measuring) return;
     setState(() {
@@ -179,7 +200,7 @@ class _MqttPageState extends State<MqttPage> {
     final samples = <int>[];
     for (var i = 0; i < 10; i++) {
       if (!_connected) break;
-      final cmd = i.isEven ? 'ON' : 'OFF';
+      final cmd = i.isEven ? '100' : '0';
       _expect = cmd;
       _waiting = Completer<void>();
       final sw = Stopwatch()..start();
@@ -236,8 +257,19 @@ class _MqttPageState extends State<MqttPage> {
             SwitchListTile(
               title: const Text('LED (kondisi nyata dari ESP32)'),
               value: _ledOn,
-              onChanged:
-                  _measuring ? null : (v) => _publish(tLed, v ? 'ON' : 'OFF'),
+              onChanged: _measuring
+                  ? null
+                  : (v) => _setPwm(v ? 100 : 0),
+            ),
+            const SizedBox(height: 8),
+            Text('Kecerahan LED PWM: ${_pwmValue.toInt()}%'),
+            Slider(
+              value: _pwmValue,
+              min: 0,
+              max: 100,
+              divisions: 100,
+              label: '${_pwmValue.round()}%',
+              onChanged: _measuring ? null : _setPwm,
             ),
             Card(
               child: ListTile(
